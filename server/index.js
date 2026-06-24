@@ -4,6 +4,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import searchRouter from './routes/search.js';
+import beyondRouter from './routes/beyond.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -18,10 +19,12 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     soundcloud: Boolean(process.env.SOUNDCLOUD_CLIENT_ID && process.env.SOUNDCLOUD_CLIENT_SECRET),
     spotify: Boolean(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET),
+    lastfm: Boolean(process.env.LASTFM_API_KEY),
   });
 });
 
 app.use('/api/search', searchRouter);
+app.use('/api/beyond', beyondRouter);
 
 const clientDist = path.join(__dirname, '../client/dist');
 app.use(express.static(clientDist));

@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { searchArtist, checkHealth } from './api';
+import { searchArtist, fetchBeyond, checkHealth } from './api';
 import SearchBar from './components/SearchBar';
 import TrackCard from './components/TrackCard';
 import LoadingState from './components/LoadingState';
 import PlatformMessage from './components/PlatformMessage';
 import ArtistPicker from './components/ArtistPicker';
+import BeyondSection from './components/BeyondSection';
 
 export default function App() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [results, setResults] = useState(null);
+  const [beyondData, setBeyondData] = useState(null);
+  const [beyondLoading, setBeyondLoading] = useState(false);
+  const [beyondError, setBeyondError] = useState(null);
   const [apiStatus, setApiStatus] = useState(null);
   const [selection, setSelection] = useState({ soundcloudUserId: null, spotifyArtistId: null });
 
@@ -22,6 +26,8 @@ export default function App() {
     async (artist, overrides = {}) => {
       setLoading(true);
       setError(null);
+      setBeyondData(null);
+      setBeyondError(null);
 
       const opts = {
         soundcloudUserId: overrides.soundcloudUserId ?? selection.soundcloudUserId,
@@ -47,6 +53,28 @@ export default function App() {
     },
     [selection.soundcloudUserId, selection.spotifyArtistId]
   );
+
+  const handleGoBeyond = async () => {
+    if (!results?.query) return;
+
+    setBeyondLoading(true);
+    setBeyondError(null);
+
+    const seedTracks = [
+      ...(results.soundcloud.tracks ?? []),
+      ...(results.spotify.tracks ?? []),
+    ];
+
+    try {
+      const data = await fetchBeyond(results.query, seedTracks);
+      setBeyondData(data);
+    } catch (err) {
+      setBeyondError(err.message);
+      setBeyondData(null);
+    } finally {
+      setBeyondLoading(false);
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -74,12 +102,14 @@ export default function App() {
     results?.soundcloud?.status === 'ambiguous' || results?.spotify?.status === 'ambiguous';
 
   const showResults = results && !loading;
+  const artistLabel =
+    results?.soundcloud?.artistName || results?.spotify?.artistName || results?.query;
 
   return (
     <div className="relative min-h-screen">
       <div className="grain" aria-hidden="true" />
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[480px] bg-[radial-gradient(ellipse_at_top,rgba(255,85,0,0.06),transparent_60%),radial-gradient(ellipse_at_80%_20%,rgba(29,185,84,0.05),transparent_50%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[480px] bg-[radial-gradient(ellipse_at_top,rgba(255,85,0,0.06),transparent_60%),radial-gradient(ellipse_at_80%_20%,rgba(29,185,84,0.05),transparent_50%),radial-gradient(ellipse_at_20%_60%,rgba(213,16,7,0.04),transparent_50%)]" />
 
       <div className="relative mx-auto max-w-6xl px-4 pb-20 pt-16 sm:px-6 sm:pt-24">
         <header className={`text-center transition-all ${showResults ? 'mb-10' : 'mb-16'}`}>
@@ -89,17 +119,20 @@ export default function App() {
           >
             Tastemaker
           </h1>
-          <p className="mx-auto mt-3 max-w-md text-[var(--color-muted)]">
-            Discover what artists publicly like and curate — aggregated from SoundCloud and Spotify.
+          <p className="mx-auto mt-3 max-w-lg text-[var(--color-muted)]">
+            Discover what artists publicly like on SoundCloud &amp; Spotify — then go beyond with
+            Last.fm recommendations.
           </p>
 
-          {apiStatus && (!apiStatus.soundcloud || !apiStatus.spotify) && (
+          {apiStatus && (!apiStatus.soundcloud || !apiStatus.spotify || !apiStatus.lastfm) && (
             <p className="mx-auto mt-4 max-w-lg rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-200/80">
-              {!apiStatus.soundcloud && !apiStatus.spotify
-                ? 'API keys not configured yet — add them to your environment variables.'
-                : !apiStatus.soundcloud
-                  ? 'SoundCloud credentials missing — add SOUNDCLOUD_CLIENT_ID and SOUNDCLOUD_CLIENT_SECRET.'
-                  : 'Spotify API credentials missing — Spotify results will be unavailable.'}
+              {[
+                !apiStatus.soundcloud && 'SoundCloud credentials missing',
+                !apiStatus.spotify && 'Spotify credentials missing',
+                !apiStatus.lastfm && 'Last.fm API key missing (Go beyond unavailable)',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
           )}
         </header>
@@ -144,19 +177,17 @@ export default function App() {
                   <PlatformMessage platform="Spotify" result={results.spotify} />
                 </div>
 
-                {(results.soundcloud.artistName || results.spotify.artistName) && (
+                {artistLabel && (
                   <p className="text-center text-sm text-[var(--color-muted)]">
-                    Showing curated music for{' '}
-                    <span className="text-white">
-                      {results.soundcloud.artistName || results.spotify.artistName}
-                    </span>
+                    Liked &amp; curated by{' '}
+                    <span className="text-white">{artistLabel}</span>
                   </p>
                 )}
 
                 {allTracks.length > 0 ? (
                   <>
                     <p className="text-center text-xs uppercase tracking-widest text-[var(--color-muted)]">
-                      {allTracks.length} track{allTracks.length !== 1 ? 's' : ''} found
+                      {allTracks.length} track{allTracks.length !== 1 ? 's' : ''} liked or curated
                     </p>
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       {allTracks.map((track, i) => (
@@ -171,6 +202,16 @@ export default function App() {
                       No curated tracks found for this artist on either platform.
                     </p>
                   )
+                )}
+
+                {apiStatus?.lastfm !== false && (
+                  <BeyondSection
+                    data={beyondData}
+                    loading={beyondLoading}
+                    error={beyondError}
+                    onGoBeyond={handleGoBeyond}
+                    disabled={!results.query}
+                  />
                 )}
               </>
             )}

@@ -7,6 +7,10 @@ const platformStyles = {
     badge: 'bg-[var(--color-spotify)]/15 text-[var(--color-spotify)] border-[var(--color-spotify)]/25',
     button: 'hover:bg-[var(--color-spotify)]/10 border-[var(--color-spotify)]/30 text-[var(--color-spotify)]',
   },
+  'Last.fm': {
+    badge: 'bg-[var(--color-lastfm)]/15 text-[var(--color-lastfm)] border-[var(--color-lastfm)]/25',
+    button: 'hover:bg-[var(--color-lastfm)]/10 border-[var(--color-lastfm)]/30 text-[var(--color-lastfm)]',
+  },
 };
 
 export default function TrackCard({ track, index }) {
@@ -36,6 +40,10 @@ export default function TrackCard({ track, index }) {
             <>
               Uploaded by <span className="text-white/70">{track.attribution}</span> · Source: SoundCloud
             </>
+          ) : track.source === 'Last.fm' ? (
+            <>
+              By <span className="text-white/70">{track.attribution}</span> · Source: Last.fm
+            </>
           ) : (
             <>
               By <span className="text-white/70">{track.attribution}</span> · Source: Spotify
@@ -48,7 +56,7 @@ export default function TrackCard({ track, index }) {
           rel="noopener noreferrer"
           className={`inline-flex w-full items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors ${styles.button}`}
         >
-          Listen on {track.source}
+          {track.source === 'Last.fm' ? 'Explore on Last.fm' : `Listen on ${track.source}`}
         </a>
       </div>
     </article>
