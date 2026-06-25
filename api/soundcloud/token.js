@@ -18,6 +18,7 @@ export default async function handler(req, res) {
       refresh_token: data.refresh_token,
     });
   } catch (err) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     const status = err.message.includes('rate limit') ? 429 : 500;
     return res.status(status).json({ error: err.message || 'Token request failed.' });
   }
