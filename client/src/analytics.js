@@ -44,6 +44,7 @@ export function trackSearchCompleted({
   spotifyCount,
   youtubeCount = 0,
   trailDepth,
+  fromCache = false,
 }) {
   capture('search_completed', {
     artist,
@@ -51,6 +52,7 @@ export function trackSearchCompleted({
     spotify_count: spotifyCount,
     youtube_count: youtubeCount,
     trail_depth: trailDepth,
+    from_cache: fromCache,
   });
 
   if (youtubeCount > 0) {

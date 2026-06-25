@@ -30,13 +30,15 @@ export default function YouTubeSection({
         [mix.videoId]: { loading: false, error: null, data },
       }));
 
-      trackYouTubeDigCompleted({
-        videoId: mix.videoId,
-        artist: artistName,
-        tracklistSource: data.tracklistSource,
-        trackCount: data.tracks?.length ?? 0,
-        matchedCount: data.tracks?.filter((t) => t.matchStatus !== 'not_found').length ?? 0,
-      });
+      if (data.status === 'success') {
+        trackYouTubeDigCompleted({
+          videoId: mix.videoId,
+          artist: artistName,
+          tracklistSource: data.tracklistSource,
+          trackCount: data.tracks?.length ?? 0,
+          matchedCount: data.tracks?.filter((t) => t.matchStatus !== 'not_found').length ?? 0,
+        });
+      }
     } catch (err) {
       setDigState((prev) => ({
         ...prev,

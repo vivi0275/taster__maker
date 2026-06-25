@@ -1,16 +1,13 @@
 import { Router } from 'express';
 import { getSoundCloudPreviewAudio } from '../services/soundcloud.js';
+import { validateSoundCloudTrackId } from '../utils/validate.js';
 
 const router = Router();
 
 router.get('/', async (req, res) => {
-  const trackId = req.query.trackId?.trim();
-
-  if (!trackId) {
-    return res.status(400).json({ error: 'trackId is required.' });
-  }
-
   try {
+    const trackId = validateSoundCloudTrackId(req.query.trackId?.trim());
+
     const { buffer, track, maxDuration } = await getSoundCloudPreviewAudio(trackId);
 
     res.setHeader('Content-Type', 'audio/mpeg');
@@ -21,6 +18,9 @@ router.get('/', async (req, res) => {
 
     return res.status(200).send(buffer);
   } catch (err) {
+    if (err.message.includes('Invalid') || err.message.includes('required')) {
+      return res.status(400).json({ error: err.message });
+    }
     return res.status(err.message.includes('not available') ? 403 : 500).json({
       error: err.message || 'Preview failed.',
     });

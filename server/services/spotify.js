@@ -372,6 +372,7 @@ export async function searchSpotify(artistName, artistId = null) {
         tracks: [],
         playlists: [],
         artists: [],
+        artistId: selectedArtist.id,
         artistName: selectedArtist.name,
         message: `No public Spotify playlists found for ${selectedArtist.name}. Liked songs are private. Try SoundCloud for their dig crate.`,
       };
@@ -383,6 +384,7 @@ export async function searchSpotify(artistName, artistId = null) {
         tracks: [],
         playlists: [],
         artists: [],
+        artistId: selectedArtist.id,
         artistName: selectedArtist.name,
         message: `No Spotify playlist content found for ${selectedArtist.name}.`,
       };
@@ -402,6 +404,7 @@ export async function searchSpotify(artistName, artistId = null) {
       tracks: playlistTracks,
       playlists: playlistEmbedCards,
       artists: [],
+      artistId: selectedArtist.id,
       artistName: selectedArtist.name,
       message: infoMessage,
     };

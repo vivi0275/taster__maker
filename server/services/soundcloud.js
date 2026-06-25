@@ -55,8 +55,8 @@ async function scFetch(path, params = {}, attempt = 0) {
   }
 
   if (response.status === 401 && attempt === 0) {
-    const { writeTokenCache } = await import('../utils/soundcloud-token-store.js');
-    await writeTokenCache({ token: null, refreshToken: null, expiresAt: 0 });
+    const { invalidateSoundCloudAccessToken } = await import('../utils/soundcloud-auth.js');
+    await invalidateSoundCloudAccessToken();
     return scFetch(path, params, attempt + 1);
   }
 
@@ -466,7 +466,7 @@ export async function getSoundCloudPreviewStream(trackId) {
     throw new Error('No preview stream available for this track.');
   }
 
-  const maxDuration = usesPreviewClip ? 30 : 60;
+  const maxDuration = 30;
 
   const token = await getAccessToken();
   const fullUrl = streamUrl.startsWith('http') ? streamUrl : `${API_BASE}${streamUrl}`;
@@ -497,7 +497,7 @@ export async function getSoundCloudPreviewAudio(trackId) {
     throw new Error('Preview stream unavailable.');
   }
 
-  const maxBytes = usesPreviewClip ? 2 * 1024 * 1024 : 4.5 * 1024 * 1024;
+  const maxBytes = usesPreviewClip ? 2 * 1024 * 1024 : 512 * 1024;
   const buffer = await readWebStreamWithLimit(response.body, maxBytes);
 
   if (!buffer.length) {
@@ -586,6 +586,7 @@ export async function searchSoundCloud(artistName, userId = null) {
         status: 'success',
         tracks: [],
         artists: [],
+        userId: String(selectedUser.id),
         artistName: displayName,
         message: `No public likes or reposts found for ${displayName} on SoundCloud.`,
       };
@@ -595,6 +596,7 @@ export async function searchSoundCloud(artistName, userId = null) {
       status: 'success',
       tracks,
       artists: [],
+      userId: String(selectedUser.id),
       artistName: displayName,
       message: null,
     };

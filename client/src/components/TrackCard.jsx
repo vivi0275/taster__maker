@@ -107,7 +107,7 @@ export default function TrackCard({
         {showSoundCloudPreview && (
           <SoundCloudPreview
             trackId={track.soundcloudTrackId}
-            maxDuration={track.previewMaxDuration ?? 60}
+            maxDuration={track.previewMaxDuration ?? 30}
             attribution={track.attribution}
             onPreviewPlay={handlePreviewPlay}
             compact

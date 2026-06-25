@@ -111,6 +111,16 @@ async function refreshWithDistributedLock() {
   }
 }
 
+export async function invalidateSoundCloudAccessToken() {
+  const refreshToken = await readRefreshToken();
+  await writeTokenCache({
+    token: null,
+    refreshToken,
+    expiresAt: 0,
+  });
+  refreshPromise = null;
+}
+
 export async function getSoundCloudAccessToken() {
   const { clientId, clientSecret } = getCredentials();
   if (!clientId || !clientSecret) return null;

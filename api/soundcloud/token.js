@@ -1,9 +1,14 @@
 import { requestSoundCloudTokenDirect } from '../../server/utils/soundcloud-auth.js';
 import { isSharedTokenStoreConfigured } from '../../server/utils/soundcloud-token-store.js';
+import { enforceRateLimit } from '../../server/utils/rate-limit.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  if (!(await enforceRateLimit(req, res, { name: 'sc-token', max: 10, windowSec: 60 }))) {
+    return;
   }
 
   try {

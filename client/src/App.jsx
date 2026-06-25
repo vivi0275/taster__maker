@@ -7,7 +7,7 @@ import {
   trackTrailExtended,
   trackDiscoverArtist,
 } from './analytics';
-import { getCachedSearch, setCachedSearch } from './utils/searchCache';
+import { getCachedSearch, resolveCacheIds, setCachedSearch } from './utils/searchCache';
 import SearchBar from './components/SearchBar';
 import WaveBackground from './components/WaveBackground';
 import SoundCloudTracksSection from './components/SoundCloudTracksSection';
@@ -23,6 +23,7 @@ import DiscoveryTrail from './components/DiscoveryTrail';
 
 export default function App() {
   const resultsRef = useRef(null);
+  const searchSeqRef = useRef(0);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -58,8 +59,20 @@ export default function App() {
     [artistLabel]
   );
 
+  const emitSearchCompleted = useCallback((data, trailDepth, fromCache = false) => {
+    trackSearchCompleted({
+      artist: data.query,
+      soundcloudCount: data.soundcloud.tracks?.length ?? 0,
+      spotifyCount: (data.spotify.tracks?.length ?? 0) + (data.spotify.playlists?.length ?? 0),
+      youtubeCount: data.youtube?.mixes?.length ?? 0,
+      trailDepth,
+      fromCache,
+    });
+  }, []);
+
   const runSearch = useCallback(
     async (artist, overrides = {}) => {
+      const searchId = ++searchSeqRef.current;
       setLoading(true);
       setError(null);
 
@@ -84,7 +97,20 @@ export default function App() {
         : getCachedSearch(artist, opts.soundcloudUserId, opts.spotifyArtistId);
 
       if (cached) {
+        if (searchId !== searchSeqRef.current) return;
+
         setResults(cached);
+
+        const resolvedIds = resolveCacheIds(opts.soundcloudUserId, opts.spotifyArtistId, cached);
+        if (cached.soundcloud.status !== 'ambiguous') {
+          setSelection((s) => ({ ...s, soundcloudUserId: resolvedIds.soundcloudUserId }));
+        }
+        if (cached.spotify.status !== 'ambiguous') {
+          setSelection((s) => ({ ...s, spotifyArtistId: resolvedIds.spotifyArtistId }));
+        }
+
+        const trailDepth = overrides.trailDepth ?? trail.length;
+        emitSearchCompleted(cached, trailDepth, true);
         setLoading(false);
         setDiscoveringArtist(null);
         return;
@@ -92,33 +118,34 @@ export default function App() {
 
       try {
         const data = await searchArtist(artist, opts);
+        if (searchId !== searchSeqRef.current) return;
+
         setResults(data);
-        setCachedSearch(artist, opts.soundcloudUserId, opts.spotifyArtistId, data);
+
+        const resolvedIds = resolveCacheIds(opts.soundcloudUserId, opts.spotifyArtistId, data);
+        setCachedSearch(artist, resolvedIds.soundcloudUserId, resolvedIds.spotifyArtistId, data);
 
         if (data.soundcloud.status !== 'ambiguous') {
-          setSelection((s) => ({ ...s, soundcloudUserId: opts.soundcloudUserId }));
+          setSelection((s) => ({ ...s, soundcloudUserId: resolvedIds.soundcloudUserId }));
         }
         if (data.spotify.status !== 'ambiguous') {
-          setSelection((s) => ({ ...s, spotifyArtistId: opts.spotifyArtistId }));
+          setSelection((s) => ({ ...s, spotifyArtistId: resolvedIds.spotifyArtistId }));
         }
 
         const trailDepth = overrides.trailDepth ?? trail.length;
-        trackSearchCompleted({
-          artist: data.query,
-          soundcloudCount: data.soundcloud.tracks?.length ?? 0,
-          spotifyCount: (data.spotify.tracks?.length ?? 0) + (data.spotify.playlists?.length ?? 0),
-          youtubeCount: data.youtube?.mixes?.length ?? 0,
-          trailDepth,
-        });
+        emitSearchCompleted(data, trailDepth, false);
       } catch (err) {
+        if (searchId !== searchSeqRef.current) return;
         setError(err.message);
         setResults(null);
       } finally {
-        setLoading(false);
-        setDiscoveringArtist(null);
+        if (searchId === searchSeqRef.current) {
+          setLoading(false);
+          setDiscoveringArtist(null);
+        }
       }
     },
-    [selection.soundcloudUserId, selection.spotifyArtistId, trail.length]
+    [selection.soundcloudUserId, selection.spotifyArtistId, trail.length, emitSearchCompleted]
   );
 
   const handleDiscoverArtist = (artistName, source = 'repost') => {
@@ -231,7 +258,8 @@ export default function App() {
 
   const canShowDigContent = !showSpotifyPicker;
 
-  const showResults = results && !loading;
+  const showResults = Boolean(results);
+  const showHero = !results && !loading;
 
   return (
     <div className="relative min-h-screen">
@@ -239,13 +267,13 @@ export default function App() {
 
       <div className="relative z-10 mx-auto max-w-6xl px-4 pb-20 pt-16 sm:px-6 sm:pt-24">
         <header className={`text-center transition-all ${showResults ? 'mb-8' : 'mb-12'}`}>
-          {!showResults && (
+          {showHero && (
             <p className="label-mono mb-4 text-[var(--color-accent)]">For DJs &amp; producers</p>
           )}
           <h1 className={`display-title text-white ${showResults ? 'text-3xl sm:text-4xl' : 'text-5xl sm:text-6xl'}`}>
             Tastemaker
           </h1>
-          {!showResults && (
+          {showHero && (
             <>
               <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-[var(--color-muted)]">
                 Dig your reference artists&apos; real SoundCloud crate. Preview tracks up to 30s. Rabbit hole deeper.
@@ -279,7 +307,7 @@ export default function App() {
           </div>
         )}
 
-        {loading && <LoadingState />}
+        {loading && !results && <LoadingState />}
 
         {error && (
           <div className="mx-auto max-w-xl rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-center text-sm text-red-300">
@@ -288,7 +316,16 @@ export default function App() {
         )}
 
         {showResults && (
-          <div ref={resultsRef} className="space-y-6 scroll-mt-8">
+          <div ref={resultsRef} className="relative space-y-6 scroll-mt-8">
+            {loading && (
+              <div
+                className="absolute inset-0 z-10 flex justify-center rounded-xl bg-[#0a0a12]/70 pt-12 backdrop-blur-[1px]"
+                aria-busy="true"
+                aria-live="polite"
+              >
+                <LoadingState />
+              </div>
+            )}
             {soundcloudAmbiguous && (
               <ArtistPicker
                 platform="soundcloud"
@@ -400,7 +437,7 @@ export default function App() {
           </div>
         )}
 
-        {!showResults && !loading && <HowItWorks />}
+        {showHero && <HowItWorks />}
       </div>
     </div>
   );

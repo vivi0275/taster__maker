@@ -1,8 +1,13 @@
 import { getBeyondRecommendations } from '../server/services/lastfm.js';
+import { enforceRateLimit } from '../server/utils/rate-limit.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  if (!(await enforceRateLimit(req, res, { name: 'beyond', max: 20, windowSec: 60 }))) {
+    return;
   }
 
   const artist = req.query.artist?.trim();

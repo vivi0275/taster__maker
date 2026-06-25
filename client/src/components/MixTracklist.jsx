@@ -87,7 +87,7 @@ export default function MixTracklist({
               {found && track.previewable && track.soundcloudTrackId && (
                 <SoundCloudPreview
                   trackId={track.soundcloudTrackId}
-                  maxDuration={track.previewMaxDuration ?? 60}
+                  maxDuration={track.previewMaxDuration ?? 30}
                   attribution={track.attribution}
                   onPreviewPlay={() =>
                     onPreviewPlay?.({
