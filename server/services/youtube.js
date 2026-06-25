@@ -1,5 +1,6 @@
 import { extractTracklist } from './tracklist-parser.js';
 import { matchTracksOnSoundCloud } from './soundcloud.js';
+import { getYouTubeApiKey } from '../utils/env.js';
 
 const API_BASE = 'https://www.googleapis.com/youtube/v3';
 const MAX_MIXES = 8;
@@ -28,7 +29,7 @@ function setCachedMixes(artistName, data) {
 }
 
 function getApiKey() {
-  return process.env.YOUTUBE_API_KEY || null;
+  return getYouTubeApiKey();
 }
 
 function notConfigured() {

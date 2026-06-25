@@ -1,7 +1,9 @@
+import { getLastfmApiKey } from '../utils/env.js';
+
 const API_BASE = 'https://ws.audioscrobbler.com/2.0/';
 
 function getApiKey() {
-  return process.env.LASTFM_API_KEY;
+  return getLastfmApiKey();
 }
 
 function notConfigured() {

@@ -9,6 +9,7 @@ import soundcloudPreviewRouter from './routes/soundcloud-preview.js';
 import soundcloudArtworkRouter from './routes/soundcloud-artwork.js';
 import youtubeDigRouter from './routes/youtube-dig.js';
 import youtubeMixesRouter from './routes/youtube-mixes.js';
+import { getYouTubeApiKey, getLastfmApiKey } from './utils/env.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -23,8 +24,8 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     soundcloud: Boolean(process.env.SOUNDCLOUD_CLIENT_ID && process.env.SOUNDCLOUD_CLIENT_SECRET),
     spotify: Boolean(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET),
-    lastfm: Boolean(process.env.LASTFM_API_KEY),
-    youtube: Boolean(process.env.YOUTUBE_API_KEY),
+    lastfm: Boolean(getLastfmApiKey()),
+    youtube: Boolean(getYouTubeApiKey()),
   });
 });
 
