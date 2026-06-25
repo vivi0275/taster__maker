@@ -1,4 +1,5 @@
-import { requestSoundCloudTokenDirect } from '../../server/services/soundcloud.js';
+import { requestSoundCloudTokenDirect } from '../../server/utils/soundcloud-auth.js';
+import { isSharedTokenStoreConfigured } from '../../server/utils/soundcloud-token-store.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -9,8 +10,8 @@ export default async function handler(req, res) {
     const data = await requestSoundCloudTokenDirect();
 
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Cache-Control', 'public, s-maxage=3000, stale-while-revalidate=86400');
-    res.setHeader('CDN-Cache-Control', 'public, s-maxage=3000');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('X-Token-Store', isSharedTokenStoreConfigured() ? 'upstash' : 'memory');
 
     return res.status(200).json({
       access_token: data.access_token,

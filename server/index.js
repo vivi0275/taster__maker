@@ -11,6 +11,7 @@ import soundcloudTokenRouter from './routes/soundcloud-token.js';
 import youtubeDigRouter from './routes/youtube-dig.js';
 import youtubeMixesRouter from './routes/youtube-mixes.js';
 import { getYouTubeApiKey, getLastfmApiKey } from './utils/env.js';
+import { isSharedTokenStoreConfigured } from './utils/soundcloud-token-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../.env') });
@@ -27,6 +28,7 @@ app.get('/api/health', (_req, res) => {
     spotify: Boolean(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET),
     lastfm: Boolean(getLastfmApiKey()),
     youtube: Boolean(getYouTubeApiKey()),
+    tokenStore: isSharedTokenStoreConfigured() ? 'upstash' : 'memory',
   });
 });
 

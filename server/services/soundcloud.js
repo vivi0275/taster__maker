@@ -1,85 +1,12 @@
 import { cleanTrackForSearch } from './tracklist-parser.js';
+import { getSoundCloudAccessToken, requestSoundCloudTokenDirect } from '../utils/soundcloud-auth.js';
 
 const API_BASE = 'https://api.soundcloud.com';
-const TOKEN_URL = 'https://secure.soundcloud.com/oauth/token';
 
-let tokenCache = { token: null, refreshToken: null, expiresAt: 0 };
-let tokenRefreshPromise = null;
+export { requestSoundCloudTokenDirect };
 
-function getVercelBaseUrl() {
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
-  }
-  return null;
-}
-
-async function fetchTokenFromCdnCache() {
-  const base = getVercelBaseUrl();
-  if (!base) return null;
-
-  try {
-    const response = await fetch(`${base}/api/soundcloud/token`, {
-      headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    if (!data?.access_token) return null;
-
-    storeToken(data);
-    return data.access_token;
-  } catch {
-    return null;
-  }
-}
-
-export async function requestSoundCloudTokenDirect() {
-  if (tokenRefreshPromise) return tokenRefreshPromise;
-
-  tokenRefreshPromise = (async () => {
-    const { clientId, clientSecret } = getCredentials();
-    if (!clientId || !clientSecret) {
-      throw new Error('SoundCloud credentials missing.');
-    }
-
-    if (tokenCache.refreshToken) {
-      try {
-        const params = new URLSearchParams({
-          grant_type: 'refresh_token',
-          client_id: clientId,
-          client_secret: clientSecret,
-          refresh_token: tokenCache.refreshToken,
-        });
-        return await requestToken(params.toString(), clientId, clientSecret);
-      } catch {
-        tokenCache.refreshToken = null;
-      }
-    }
-
-    return requestToken('grant_type=client_credentials', clientId, clientSecret);
-  })().finally(() => {
-    tokenRefreshPromise = null;
-  });
-
-  return tokenRefreshPromise;
-}
-
-async function getAccessToken({ allowCdn = true } = {}) {
-  const { clientId, clientSecret } = getCredentials();
-  if (!clientId || !clientSecret) return null;
-
-  if (tokenCache.token && Date.now() < tokenCache.expiresAt - 60_000) {
-    return tokenCache.token;
-  }
-
-  if (allowCdn && process.env.VERCEL) {
-    const cached = await fetchTokenFromCdnCache();
-    if (cached) return cached;
-  }
-
-  const data = await requestSoundCloudTokenDirect();
-  return storeToken(data);
+async function getAccessToken() {
+  return getSoundCloudAccessToken();
 }
 
 function getCredentials() {
@@ -97,45 +24,6 @@ function notConfigured() {
     message:
       'SoundCloud API not configured. Add SOUNDCLOUD_CLIENT_ID and SOUNDCLOUD_CLIENT_SECRET to your environment variables.',
   };
-}
-
-function storeToken(data) {
-  tokenCache = {
-    token: data.access_token,
-    refreshToken: data.refresh_token ?? tokenCache.refreshToken,
-    expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
-  };
-  return data.access_token;
-}
-
-async function requestToken(body, clientId, clientSecret) {
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-  const response = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json; charset=utf-8',
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Authorization: `Basic ${credentials}`,
-    },
-    body,
-  });
-
-  if (response.status === 429) {
-    if (tokenCache.token) {
-      return {
-        access_token: tokenCache.token,
-        expires_in: Math.max(60, Math.floor((tokenCache.expiresAt - Date.now()) / 1000)),
-        refresh_token: tokenCache.refreshToken,
-      };
-    }
-    throw new Error('SoundCloud authentication rate limit reached. Please try again in a few minutes.');
-  }
-
-  if (!response.ok) {
-    throw new Error('SoundCloud authentication failed. Check your client ID and secret.');
-  }
-
-  return response.json();
 }
 
 async function scFetch(path, params = {}, attempt = 0) {
@@ -167,8 +55,8 @@ async function scFetch(path, params = {}, attempt = 0) {
   }
 
   if (response.status === 401 && attempt === 0) {
-    tokenCache.token = null;
-    tokenCache.expiresAt = 0;
+    const { writeTokenCache } = await import('../utils/soundcloud-token-store.js');
+    await writeTokenCache({ token: null, refreshToken: null, expiresAt: 0 });
     return scFetch(path, params, attempt + 1);
   }
 
