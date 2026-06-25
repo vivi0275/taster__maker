@@ -121,6 +121,13 @@ async function requestToken(body, clientId, clientSecret) {
   });
 
   if (response.status === 429) {
+    if (tokenCache.token) {
+      return {
+        access_token: tokenCache.token,
+        expires_in: Math.max(60, Math.floor((tokenCache.expiresAt - Date.now()) / 1000)),
+        refresh_token: tokenCache.refreshToken,
+      };
+    }
     throw new Error('SoundCloud authentication rate limit reached. Please try again in a few minutes.');
   }
 
@@ -555,7 +562,13 @@ export async function getSoundCloudPreviewStream(trackId) {
     throw new Error('This track is not available for preview on SoundCloud.');
   }
 
-  const streams = await scFetch(`/tracks/${trackId}/streams`);
+  let streams;
+  try {
+    streams = await scFetch(`/tracks/${trackId}/streams`);
+  } catch {
+    streams = {};
+  }
+
   const previewMp3 = streams.preview_mp3_128_url;
   const fullMp3 = streams.http_mp3_128_url;
   const usesPreviewClip = Boolean(previewMp3);
@@ -572,7 +585,7 @@ export async function getSoundCloudPreviewStream(trackId) {
 
   const response = await fetch(fullUrl, {
     headers: {
-      Accept: 'application/json; charset=utf-8',
+      Accept: '*/*',
       Authorization: `OAuth ${token}`,
     },
   });
