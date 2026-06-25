@@ -471,6 +471,33 @@ export async function streamTrackArtwork(trackId, trackUrl = null) {
   };
 }
 
+async function readWebStreamWithLimit(body, maxBytes) {
+  const reader = body.getReader();
+  const chunks = [];
+  let total = 0;
+
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const remaining = maxBytes - total;
+      if (value.byteLength > remaining) {
+        chunks.push(Buffer.from(value.subarray(0, remaining)));
+        total += remaining;
+        break;
+      }
+
+      chunks.push(Buffer.from(value));
+      total += value.byteLength;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+
+  return Buffer.concat(chunks);
+}
+
 export async function getSoundCloudPreviewStream(trackId) {
   const track = await scFetch(`/tracks/${trackId}`);
 
@@ -482,7 +509,7 @@ export async function getSoundCloudPreviewStream(trackId) {
   const hasFullStream = Boolean(streams.http_mp3_128_url);
   const streamUrl = hasFullStream
     ? streams.http_mp3_128_url
-    : streams.preview_mp3_128_url || streams.hls_mp3_128_url;
+    : streams.preview_mp3_128_url;
 
   if (!streamUrl) {
     throw new Error('No preview stream available for this track.');
@@ -509,6 +536,23 @@ export async function getSoundCloudPreviewStream(trackId) {
     track,
     maxDuration,
   };
+}
+
+export async function getSoundCloudPreviewAudio(trackId) {
+  const { response, track, maxDuration } = await getSoundCloudPreviewStream(trackId);
+  const maxBytes = Math.ceil((maxDuration * 128_000) / 8) + 16_384;
+
+  if (!response.body) {
+    throw new Error('Preview stream unavailable.');
+  }
+
+  const buffer = await readWebStreamWithLimit(response.body, maxBytes);
+
+  if (!buffer.length) {
+    throw new Error('Preview stream unavailable.');
+  }
+
+  return { buffer, track, maxDuration };
 }
 
 export async function searchSoundCloud(artistName, userId = null) {

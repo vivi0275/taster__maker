@@ -1,6 +1,4 @@
-import { getSoundCloudPreviewStream } from '../server/services/soundcloud.js';
-import { Readable } from 'stream';
-import { pipeline } from 'stream/promises';
+import { getSoundCloudPreviewAudio } from '../../server/services/soundcloud.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -14,7 +12,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { response, track, maxDuration } = await getSoundCloudPreviewStream(trackId);
+    const { buffer, track, maxDuration } = await getSoundCloudPreviewAudio(trackId);
 
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -22,15 +20,9 @@ export default async function handler(req, res) {
     res.setHeader('X-Attribution-Uploader', track.user?.username ?? 'Unknown');
     res.setHeader('X-Attribution-Source', 'SoundCloud');
 
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body);
-      await pipeline(nodeStream, res);
-      return;
-    }
-
-    res.status(502).json({ error: 'Preview stream unavailable.' });
+    return res.status(200).send(buffer);
   } catch (err) {
-    res.status(err.message.includes('not available') ? 403 : 500).json({
+    return res.status(err.message.includes('not available') ? 403 : 500).json({
       error: err.message || 'Preview failed.',
     });
   }
