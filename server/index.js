@@ -7,6 +7,7 @@ import searchRouter from './routes/search.js';
 import beyondRouter from './routes/beyond.js';
 import soundcloudPreviewRouter from './routes/soundcloud-preview.js';
 import soundcloudArtworkRouter from './routes/soundcloud-artwork.js';
+import soundcloudTokenRouter from './routes/soundcloud-token.js';
 import youtubeDigRouter from './routes/youtube-dig.js';
 import youtubeMixesRouter from './routes/youtube-mixes.js';
 import { getYouTubeApiKey, getLastfmApiKey } from './utils/env.js';
@@ -33,6 +34,7 @@ app.use('/api/search', searchRouter);
 app.use('/api/beyond', beyondRouter);
 app.use('/api/soundcloud/preview', soundcloudPreviewRouter);
 app.use('/api/soundcloud/artwork', soundcloudArtworkRouter);
+app.use('/api/soundcloud/token', soundcloudTokenRouter);
 app.use('/api/youtube/dig', youtubeDigRouter);
 app.use('/api/youtube/mixes', youtubeMixesRouter);
 

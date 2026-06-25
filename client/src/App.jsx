@@ -248,7 +248,7 @@ export default function App() {
           {!showResults && (
             <>
               <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-[var(--color-muted)]">
-                Dig your reference artists&apos; real SoundCloud crate. Preview tracks up to 60s. Rabbit hole deeper.
+                Dig your reference artists&apos; real SoundCloud crate. Preview tracks up to 30s. Rabbit hole deeper.
               </p>
               <p className="label-mono mx-auto mt-3 max-w-lg text-[var(--color-muted)]/60">
                 Real likes &amp; reposts · YouTube sets as bonus

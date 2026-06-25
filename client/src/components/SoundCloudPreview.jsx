@@ -3,12 +3,13 @@ import { usePreviewContext } from '../context/PreviewContext';
 
 export default function SoundCloudPreview({
   trackId,
-  maxDuration = 60,
+  maxDuration = 30,
   attribution,
   onPreviewPlay,
   compact = false,
 }) {
   const audioRef = useRef(null);
+  const blobUrlRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0);
@@ -20,7 +21,24 @@ export default function SoundCloudPreview({
     setProgress(0);
     setPlaying(false);
     setError(null);
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.removeAttribute('src');
+      audioRef.current.load();
+    }
   }, [trackId, maxDuration]);
+
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleStop = (e) => {
@@ -46,16 +64,6 @@ export default function SoundCloudPreview({
     registerStop(trackId);
   };
 
-  const syncDurationLimit = () => {
-    const audio = audioRef.current;
-    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
-
-    const actualSeconds = Math.floor(audio.duration);
-    if (actualSeconds > 0 && actualSeconds < durationLimit) {
-      setDurationLimit(actualSeconds);
-    }
-  };
-
   const handlePlay = async () => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -68,17 +76,37 @@ export default function SoundCloudPreview({
     setError(null);
     registerPlay(trackId, stopPlayback);
 
-    if (!audio.src) {
-      audio.src = `/api/soundcloud/preview?trackId=${encodeURIComponent(trackId)}`;
-    }
-
     try {
+      const response = await fetch(
+        `/api/soundcloud/preview?trackId=${encodeURIComponent(trackId)}`
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || 'Preview unavailable for this track.');
+      }
+
+      const headerDuration = Number(response.headers.get('X-Preview-Max-Duration'));
+      if (Number.isFinite(headerDuration) && headerDuration > 0) {
+        setDurationLimit(headerDuration);
+      }
+
+      const blob = await response.blob();
+      if (!blob.size || (!blob.type.includes('audio') && !blob.type.includes('mpeg'))) {
+        throw new Error('Preview unavailable for this track.');
+      }
+
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+      }
+
+      blobUrlRef.current = URL.createObjectURL(blob);
+      audio.src = blobUrlRef.current;
       await audio.play();
-      syncDurationLimit();
       setPlaying(true);
       onPreviewPlay?.();
-    } catch {
-      setError('Preview unavailable for this track.');
+    } catch (err) {
+      setError(err.message || 'Preview unavailable for this track.');
       setPlaying(false);
       registerStop(trackId);
     }
@@ -113,7 +141,6 @@ export default function SoundCloudPreview({
       <audio
         ref={audioRef}
         preload="none"
-        onLoadedMetadata={syncDurationLimit}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
         onError={() => {

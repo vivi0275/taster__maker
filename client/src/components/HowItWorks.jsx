@@ -7,7 +7,7 @@ const STEPS = [
   {
     n: '02',
     title: 'Preview',
-    body: 'Listen up to 60s in-app. No tab-hopping on SoundCloud.',
+    body: 'Listen up to 30s in-app. No tab-hopping on SoundCloud.',
   },
   {
     n: '03',

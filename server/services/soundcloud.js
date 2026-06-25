@@ -4,6 +4,83 @@ const API_BASE = 'https://api.soundcloud.com';
 const TOKEN_URL = 'https://secure.soundcloud.com/oauth/token';
 
 let tokenCache = { token: null, refreshToken: null, expiresAt: 0 };
+let tokenRefreshPromise = null;
+
+function getVercelBaseUrl() {
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
+  return null;
+}
+
+async function fetchTokenFromCdnCache() {
+  const base = getVercelBaseUrl();
+  if (!base) return null;
+
+  try {
+    const response = await fetch(`${base}/api/soundcloud/token`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (!data?.access_token) return null;
+
+    storeToken(data);
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}
+
+export async function requestSoundCloudTokenDirect() {
+  if (tokenRefreshPromise) return tokenRefreshPromise;
+
+  tokenRefreshPromise = (async () => {
+    const { clientId, clientSecret } = getCredentials();
+    if (!clientId || !clientSecret) {
+      throw new Error('SoundCloud credentials missing.');
+    }
+
+    if (tokenCache.refreshToken) {
+      try {
+        const params = new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: clientId,
+          client_secret: clientSecret,
+          refresh_token: tokenCache.refreshToken,
+        });
+        return await requestToken(params.toString(), clientId, clientSecret);
+      } catch {
+        tokenCache.refreshToken = null;
+      }
+    }
+
+    return requestToken('grant_type=client_credentials', clientId, clientSecret);
+  })().finally(() => {
+    tokenRefreshPromise = null;
+  });
+
+  return tokenRefreshPromise;
+}
+
+async function getAccessToken({ allowCdn = true } = {}) {
+  const { clientId, clientSecret } = getCredentials();
+  if (!clientId || !clientSecret) return null;
+
+  if (tokenCache.token && Date.now() < tokenCache.expiresAt - 60_000) {
+    return tokenCache.token;
+  }
+
+  if (allowCdn && process.env.VERCEL) {
+    const cached = await fetchTokenFromCdnCache();
+    if (cached) return cached;
+  }
+
+  const data = await requestSoundCloudTokenDirect();
+  return storeToken(data);
+}
 
 function getCredentials() {
   return {
@@ -52,33 +129,6 @@ async function requestToken(body, clientId, clientSecret) {
   }
 
   return response.json();
-}
-
-async function getAccessToken() {
-  const { clientId, clientSecret } = getCredentials();
-  if (!clientId || !clientSecret) return null;
-
-  if (tokenCache.token && Date.now() < tokenCache.expiresAt - 60_000) {
-    return tokenCache.token;
-  }
-
-  if (tokenCache.refreshToken) {
-    try {
-      const params = new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: tokenCache.refreshToken,
-      });
-      const data = await requestToken(params.toString(), clientId, clientSecret);
-      return storeToken(data);
-    } catch {
-      tokenCache.refreshToken = null;
-    }
-  }
-
-  const data = await requestToken('grant_type=client_credentials', clientId, clientSecret);
-  return storeToken(data);
 }
 
 async function scFetch(path, params = {}, attempt = 0) {
@@ -175,7 +225,7 @@ function resolveArtworkUrl(track) {
 function resolvePreviewMaxDuration(track) {
   if (track.access === 'blocked') return 0;
   if (track.access === 'preview') return 30;
-  return 60;
+  return 30;
 }
 
 function normalizeLikeTrack(item, profileUsername, profileDisplayName) {
@@ -506,16 +556,16 @@ export async function getSoundCloudPreviewStream(trackId) {
   }
 
   const streams = await scFetch(`/tracks/${trackId}/streams`);
-  const hasFullStream = Boolean(streams.http_mp3_128_url);
-  const streamUrl = hasFullStream
-    ? streams.http_mp3_128_url
-    : streams.preview_mp3_128_url;
+  const previewMp3 = streams.preview_mp3_128_url;
+  const fullMp3 = streams.http_mp3_128_url;
+  const usesPreviewClip = Boolean(previewMp3);
 
+  const streamUrl = previewMp3 || fullMp3;
   if (!streamUrl) {
     throw new Error('No preview stream available for this track.');
   }
 
-  const maxDuration = hasFullStream && track.access !== 'preview' ? 60 : 30;
+  const maxDuration = usesPreviewClip ? 30 : 60;
 
   const token = await getAccessToken();
   const fullUrl = streamUrl.startsWith('http') ? streamUrl : `${API_BASE}${streamUrl}`;
@@ -535,17 +585,18 @@ export async function getSoundCloudPreviewStream(trackId) {
     response,
     track,
     maxDuration,
+    usesPreviewClip,
   };
 }
 
 export async function getSoundCloudPreviewAudio(trackId) {
-  const { response, track, maxDuration } = await getSoundCloudPreviewStream(trackId);
-  const maxBytes = Math.ceil((maxDuration * 128_000) / 8) + 16_384;
+  const { response, track, maxDuration, usesPreviewClip } = await getSoundCloudPreviewStream(trackId);
 
   if (!response.body) {
     throw new Error('Preview stream unavailable.');
   }
 
+  const maxBytes = usesPreviewClip ? 2 * 1024 * 1024 : 4.5 * 1024 * 1024;
   const buffer = await readWebStreamWithLimit(response.body, maxBytes);
 
   if (!buffer.length) {
