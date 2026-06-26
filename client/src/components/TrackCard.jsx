@@ -84,11 +84,19 @@ export default function TrackCard({
   const linkLabel =
     track.kind === 'playlist' ? 'Open playlist' : platformLinkLabel[track.source] ?? `Open on ${track.source}`;
 
+  const signalLabel = track.signal === 'liked' ? 'Liked' : track.signal === 'reposted' ? 'Reposted' : null;
+
   return (
     <article
-      className="dig-card animate-fade-up"
+      className="dig-card animate-fade-up group"
       style={{ animationDelay: `${Math.min(index * 40, 400)}ms` }}
     >
+      {signalLabel && (
+        <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[0.5625rem] font-medium bg-black/40 text-white/70 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity z-10">
+          {signalLabel}
+        </span>
+      )}
+
       <h3 className="dig-card-title" title={track.title}>
         {track.title}
       </h3>

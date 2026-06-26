@@ -1,23 +1,50 @@
 export default function SearchBar({ value, onChange, onSubmit, loading, compact = false }) {
   return (
-    <form onSubmit={onSubmit} className={`panel w-full max-w-xl ${compact ? 'p-1 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.6)]' : 'p-1.5'}`}>
-      <div className="relative">
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={compact ? 'Dig another artist…' : 'Search a DJ or producer…'}
-          disabled={loading}
-          autoFocus={!compact}
-          className={`input-field w-full pr-24 disabled:opacity-50 ${compact ? 'px-3.5 py-2.5 text-sm' : 'px-4 py-3.5 text-base'}`}
-        />
-        <button
-          type="submit"
-          disabled={loading || !value.trim()}
-          className="btn-accent absolute right-1.5 top-1/2 -translate-y-1/2 px-4 py-2"
-        >
-          {loading ? '…' : 'Dig'}
-        </button>
+    <form onSubmit={onSubmit} className={`search-container ${compact ? 'search-container-compact' : ''}`}>
+      <div className="search-wrapper">
+        <div className="search-glow" />
+        <div className="search-dark-border" />
+        <div className="search-border" />
+        <div className="search-white" />
+
+        <div className="search-inner">
+          <svg
+            className="search-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={compact ? 'Dig another artist...' : 'Search a DJ or producer...'}
+            disabled={loading}
+            autoFocus={!compact}
+            className="search-input"
+          />
+
+          <div className="search-pink-mask" />
+
+          <button
+            type="submit"
+            disabled={loading || !value.trim()}
+            className="search-button"
+          >
+            {loading ? (
+              <span className="animate-pulse-dot">*</span>
+            ) : (
+              'Dig'
+            )}
+          </button>
+        </div>
       </div>
     </form>
   );

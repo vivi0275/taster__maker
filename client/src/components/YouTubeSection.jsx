@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { fetchYouTubeDig } from '../api';
 import { trackYouTubeDigCompleted, trackYouTubeDigStarted } from '../analytics';
-import CollapsibleSection from './CollapsibleSection';
 import MixCard from './MixCard';
 
 export default function YouTubeSection({
@@ -48,39 +47,51 @@ export default function YouTubeSection({
   };
 
   return (
-    <CollapsibleSection
-      title="Live sets"
-      subtitle="YouTube mixes. Dig the tracklist, find each track on SoundCloud. Bonus signal after the dig crate."
-      badge={mixes?.length ? `${mixes.length} mixes` : null}
-      defaultOpen={false}
-    >
-      {message && (
-        <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-200/80">
-          {message}
-        </p>
-      )}
-
-      {mixes?.length > 0 && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {mixes.map((mix, i) => {
-            const state = digState[mix.videoId] ?? { loading: false, error: null, data: null };
-            return (
-              <MixCard
-                key={mix.videoId}
-                mix={mix}
-                index={i}
-                artistName={artistName}
-                digLoading={state.loading}
-                digError={state.error}
-                digData={state.data}
-                onDig={() => handleDig(mix)}
-                onOutboundClick={onOutboundClick}
-                onPreviewPlay={onPreviewPlay}
-              />
-            );
-          })}
+    <section className="panel w-full animate-fade-up">
+      <div className="section-header">
+        <div className="section-header-content">
+          <div className="section-header-title">
+            <span className="section-header-icon section-header-icon-youtube">▶</span>
+            <h2 className="section-title text-lg text-white sm:text-xl">Live Sets</h2>
+            {mixes?.length > 0 && (
+              <span className="badge-mono">{mixes.length} {mixes.length === 1 ? 'mix' : 'mixes'}</span>
+            )}
+          </div>
+          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-[var(--color-muted)]">
+            YouTube mixes and DJ sets. Dig the tracklist to find tracks on SoundCloud.
+          </p>
         </div>
-      )}
-    </CollapsibleSection>
+      </div>
+
+      <div className="space-y-6 border-t border-[var(--color-border-subtle)] px-4 py-5 sm:px-5">
+        {message && (
+          <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-200/80">
+            {message}
+          </p>
+        )}
+
+        {mixes?.length > 0 && (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {mixes.map((mix, i) => {
+              const state = digState[mix.videoId] ?? { loading: false, error: null, data: null };
+              return (
+                <MixCard
+                  key={mix.videoId}
+                  mix={mix}
+                  index={i}
+                  artistName={artistName}
+                  digLoading={state.loading}
+                  digError={state.error}
+                  digData={state.data}
+                  onDig={() => handleDig(mix)}
+                  onOutboundClick={onOutboundClick}
+                  onPreviewPlay={onPreviewPlay}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

@@ -20,6 +20,7 @@ import LoadingState from './components/LoadingState';
 import PlatformMessage from './components/PlatformMessage';
 import ArtistPicker from './components/ArtistPicker';
 import DiscoveryTrail from './components/DiscoveryTrail';
+import SectionTabs from './components/SectionTabs';
 
 export default function App() {
   const resultsRef = useRef(null);
@@ -31,8 +32,11 @@ export default function App() {
   const [apiStatus, setApiStatus] = useState(null);
   const [trail, setTrail] = useState([]);
   const [discoveringArtist, setDiscoveringArtist] = useState(null);
+  const [soundcloudSkipped, setSoundcloudSkipped] = useState(false);
   const [spotifySkipped, setSpotifySkipped] = useState(false);
+  const [profileSelectionDone, setProfileSelectionDone] = useState(false);
   const [selection, setSelection] = useState({ soundcloudUserId: null, spotifyArtistId: null });
+  const [activeSection, setActiveSection] = useState('likes');
 
   useEffect(() => {
     checkHealth().then(setApiStatus).catch(() => null);
@@ -77,7 +81,13 @@ export default function App() {
       setError(null);
 
       const resetSelection = overrides.resetSelection ?? false;
-      const resetSpotifySkip = overrides.resetSpotifySkip ?? false;
+      const resetSkips = overrides.resetSkips ?? false;
+
+      if (resetSkips) {
+        setSoundcloudSkipped(false);
+        setSpotifySkipped(false);
+        setProfileSelectionDone(false);
+      }
 
       const opts = {
         soundcloudUserId: resetSelection
@@ -87,10 +97,6 @@ export default function App() {
           ? overrides.spotifyArtistId ?? null
           : overrides.spotifyArtistId ?? selection.spotifyArtistId,
       };
-
-      if (resetSpotifySkip) {
-        setSpotifySkipped(false);
-      }
 
       const cached = overrides.skipCache
         ? null
@@ -155,7 +161,9 @@ export default function App() {
 
     setQuery(artistName);
     setSelection({ soundcloudUserId: null, spotifyArtistId: null });
+    setSoundcloudSkipped(false);
     setSpotifySkipped(false);
+    setProfileSelectionDone(false);
     setDiscoveringArtist(artistName);
     setTrail(nextTrail);
 
@@ -164,7 +172,7 @@ export default function App() {
 
     runSearch(artistName, {
       resetSelection: true,
-      resetSpotifySkip: true,
+      resetSkips: true,
       soundcloudUserId: null,
       spotifyArtistId: null,
       trailDepth: depth,
@@ -176,11 +184,13 @@ export default function App() {
     const nextTrail = trail.slice(0, index + 1);
     setQuery(artistName);
     setSelection({ soundcloudUserId: null, spotifyArtistId: null });
+    setSoundcloudSkipped(false);
     setSpotifySkipped(false);
+    setProfileSelectionDone(false);
     setTrail(nextTrail);
     runSearch(artistName, {
       resetSelection: true,
-      resetSpotifySkip: true,
+      resetSkips: true,
       soundcloudUserId: null,
       spotifyArtistId: null,
       trailDepth: nextTrail.length,
@@ -193,11 +203,13 @@ export default function App() {
     const trimmed = query.trim();
     if (!trimmed) return;
     setSelection({ soundcloudUserId: null, spotifyArtistId: null });
+    setSoundcloudSkipped(false);
     setSpotifySkipped(false);
+    setProfileSelectionDone(false);
     setTrail([trimmed]);
     runSearch(trimmed, {
       resetSelection: true,
-      resetSpotifySkip: true,
+      resetSkips: true,
       soundcloudUserId: null,
       spotifyArtistId: null,
       trailDepth: 1,
@@ -206,17 +218,29 @@ export default function App() {
 
   const handleSoundCloudPick = (userId) => {
     setSelection((s) => ({ ...s, soundcloudUserId: userId }));
-    runSearch(results.query, { soundcloudUserId: userId, trailDepth: trail.length, skipCache: true });
   };
 
   const handleSpotifyPick = (artistId) => {
-    setSpotifySkipped(false);
     setSelection((s) => ({ ...s, spotifyArtistId: artistId }));
-    runSearch(results.query, { spotifyArtistId: artistId, trailDepth: trail.length, skipCache: true });
+  };
+
+  const handleSoundCloudSkip = () => {
+    setSoundcloudSkipped(true);
   };
 
   const handleSpotifySkip = () => {
     setSpotifySkipped(true);
+  };
+
+  const handleProfileContinue = () => {
+    setProfileSelectionDone(true);
+    const opts = {
+      soundcloudUserId: soundcloudSkipped ? null : selection.soundcloudUserId,
+      spotifyArtistId: spotifySkipped ? null : selection.spotifyArtistId,
+      trailDepth: trail.length,
+      skipCache: true,
+    };
+    runSearch(results.query, opts);
   };
 
   const soundcloudTracks = results?.soundcloud?.tracks ?? [];
@@ -252,11 +276,41 @@ export default function App() {
     spotifyPlaylists.length > 0 ||
     youtubeMixes.length > 0;
 
-  const soundcloudAmbiguous = results?.soundcloud?.status === 'ambiguous';
-  const showSpotifyPicker =
-    results?.spotify?.status === 'ambiguous' && !spotifySkipped && !soundcloudAmbiguous;
+  // Section counts for tabs
+  const sectionCounts = useMemo(() => ({
+    likes: likedTracks.length,
+    reposts: repostedTracks.length,
+    livesets: youtubeMixes.length,
+    discovery: scDiscoveries.length,
+    spotify: spotifyPlaylistTracks.length + spotifyPlaylists.length,
+  }), [likedTracks.length, repostedTracks.length, youtubeMixes.length, scDiscoveries.length, spotifyPlaylistTracks.length, spotifyPlaylists.length]);
 
-  const canShowDigContent = !showSpotifyPicker;
+  // Available sections based on content (order: likes, reposts, livesets, spotify, discovery)
+  const availableSections = useMemo(() => {
+    const sections = [];
+    if (likedTracks.length > 0) sections.push('likes');
+    if (repostedTracks.length > 0) sections.push('reposts');
+    if (youtubeMixes.length > 0 || results?.youtube?.message) sections.push('livesets');
+    if (!spotifySkipped && (spotifyPlaylistTracks.length > 0 || spotifyPlaylists.length > 0)) sections.push('spotify');
+    if (scDiscoveries.length > 0) sections.push('discovery');
+    return sections;
+  }, [likedTracks.length, repostedTracks.length, youtubeMixes.length, results?.youtube?.message, scDiscoveries.length, spotifySkipped, spotifyPlaylistTracks.length, spotifyPlaylists.length]);
+
+  // Reset active section when content changes
+  useEffect(() => {
+    if (availableSections.length > 0 && !availableSections.includes(activeSection)) {
+      setActiveSection(availableSections[0]);
+    }
+  }, [availableSections, activeSection]);
+
+  const soundcloudAmbiguous = results?.soundcloud?.status === 'ambiguous';
+  const spotifyAmbiguous = results?.spotify?.status === 'ambiguous';
+
+  // Show combined picker if either platform needs selection and we haven't confirmed yet
+  const needsProfileSelection = (soundcloudAmbiguous || spotifyAmbiguous) && !profileSelectionDone;
+
+  // Can show dig content when profile selection is complete
+  const canShowDigContent = !needsProfileSelection;
 
   const showResults = Boolean(results);
   const showHero = !results && !loading;
@@ -268,20 +322,15 @@ export default function App() {
       <div className="relative z-10 mx-auto max-w-6xl px-4 pb-20 pt-16 sm:px-6 sm:pt-24">
         <header className={`text-center transition-all ${showResults ? 'mb-8' : 'mb-12'}`}>
           {showHero && (
-            <p className="label-mono mb-4 text-[var(--color-accent)]">For DJs &amp; producers</p>
+            <p className="label-mono mb-4 text-[var(--color-accent)]">For DJs, producers &amp; music addicts</p>
           )}
           <h1 className={`display-title text-white ${showResults ? 'text-3xl sm:text-4xl' : 'text-5xl sm:text-6xl'}`}>
             Tastemaker
           </h1>
           {showHero && (
-            <>
-              <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-[var(--color-muted)]">
-                Dig your reference artists&apos; real SoundCloud crate. Preview tracks up to 30s. Rabbit hole deeper.
-              </p>
-              <p className="label-mono mx-auto mt-3 max-w-lg text-[var(--color-muted)]/60">
-                Real likes &amp; reposts · YouTube sets as bonus
-              </p>
-            </>
+            <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-[var(--color-muted)]">
+              Discover what your favorite artists actually listen to.
+            </p>
           )}
 
           {apiStatus && (!apiStatus.soundcloud || !apiStatus.spotify || !apiStatus.youtube) && (
@@ -326,38 +375,44 @@ export default function App() {
                 <LoadingState />
               </div>
             )}
-            {soundcloudAmbiguous && (
+            {needsProfileSelection && (
               <ArtistPicker
-                platform="soundcloud"
-                artists={results.soundcloud.artists}
-                onSelect={handleSoundCloudPick}
+                combined
+                soundcloudArtists={soundcloudAmbiguous ? results.soundcloud.artists : null}
+                spotifyArtists={spotifyAmbiguous ? results.spotify.artists : null}
+                onSoundCloudSelect={handleSoundCloudPick}
+                onSpotifySelect={handleSpotifyPick}
+                onSoundCloudSkip={handleSoundCloudSkip}
+                onSpotifySkip={handleSpotifySkip}
+                soundcloudSelected={selection.soundcloudUserId}
+                spotifySelected={selection.spotifyArtistId}
+                soundcloudSkipped={soundcloudSkipped}
+                spotifySkipped={spotifySkipped}
+                onContinue={handleProfileContinue}
               />
             )}
 
-            {!soundcloudAmbiguous && (
+            {canShowDigContent && (
               <>
-                {showSpotifyPicker && (
-                  <ArtistPicker
-                    platform="spotify"
-                    artists={results.spotify.artists}
-                    onSelect={handleSpotifyPick}
-                    onSkip={handleSpotifySkip}
-                  />
-                )}
-
-                {canShowDigContent && (
-                  <>
                 <PlatformMessage platform="SoundCloud" result={results.soundcloud} />
 
                 <DigSummary
                   artist={artistLabel}
                   likedCount={likedTracks.length}
                   repostedCount={repostedTracks.length}
-                  discoveryCount={scDiscoveries.length}
                 />
 
-                <div className="space-y-4">
-                  {likedTracks.length > 0 && (
+                {availableSections.length > 1 && (
+                  <SectionTabs
+                    activeSection={activeSection}
+                    onSectionChange={setActiveSection}
+                    sections={availableSections}
+                    counts={sectionCounts}
+                  />
+                )}
+
+                <div className="space-y-4" key={activeSection}>
+                  {activeSection === 'likes' && likedTracks.length > 0 && (
                     <SoundCloudTracksSection
                       title="Likes"
                       subtitle="What they actually liked. Hit play, open on SoundCloud."
@@ -370,37 +425,20 @@ export default function App() {
                     />
                   )}
 
-                  {repostedTracks.length > 0 && (
+                  {activeSection === 'reposts' && repostedTracks.length > 0 && (
                     <SoundCloudTracksSection
                       title="Reposts"
                       subtitle="Their repost signal. Where the best rabbit holes start."
                       badge={`${repostedTracks.length} ${repostedTracks.length === 1 ? 'track' : 'tracks'}`}
                       tracks={repostedTracks}
                       startIndex={likedTracks.length}
+                      defaultOpen
                       onOutboundClick={handleAnalyticsOutbound}
                       onPreviewPlay={handleAnalyticsPreview}
                     />
                   )}
 
-                  {scDiscoveries.length > 0 && (
-                    <ScDiscoverySection
-                      discoveries={scDiscoveries}
-                      sourceArtist={artistLabel}
-                      onDiscoverArtist={(name) => handleDiscoverArtist(name, 'repost')}
-                      discoveringArtist={discoveringArtist}
-                    />
-                  )}
-
-                  {!hasSoundcloudCrate && results.soundcloud.message && (
-                    <p className="panel px-4 py-6 text-center text-sm text-[var(--color-muted)]">
-                      {results.soundcloud.message}
-                      {scDiscoveries.length > 0 && (
-                        <span className="mt-2 block">Expand discovery reposts to keep digging.</span>
-                      )}
-                    </p>
-                  )}
-
-                  {(youtubeMixes.length > 0 || results.youtube?.message) && (
+                  {activeSection === 'livesets' && (youtubeMixes.length > 0 || results.youtube?.message) && (
                     <YouTubeSection
                       mixes={youtubeMixes}
                       message={results.youtube?.message}
@@ -410,7 +448,16 @@ export default function App() {
                     />
                   )}
 
-                  {!spotifySkipped &&
+                  {activeSection === 'discovery' && scDiscoveries.length > 0 && (
+                    <ScDiscoverySection
+                      discoveries={scDiscoveries}
+                      sourceArtist={artistLabel}
+                      onDiscoverArtist={(name) => handleDiscoverArtist(name, 'repost')}
+                      discoveringArtist={discoveringArtist}
+                    />
+                  )}
+
+                  {activeSection === 'spotify' && !spotifySkipped &&
                     results.spotify.status !== 'ambiguous' &&
                     (spotifyPlaylistTracks.length > 0 || spotifyPlaylists.length > 0) && (
                       <SpotifySection
@@ -423,14 +470,23 @@ export default function App() {
                         onPreviewPlay={handleAnalyticsPreview}
                       />
                     )}
+
+                  {!hasSoundcloudCrate && results.soundcloud.message && availableSections.length === 0 && (
+                    <div className="empty-state panel">
+                      <div className="empty-state-icon">?</div>
+                      <h3 className="empty-state-title">No public activity found</h3>
+                      <p className="empty-state-text">
+                        {results.soundcloud.message}
+                        {scDiscoveries.length > 0 && ' Check the Rabbit Hole tab to discover artists they reposted.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {!hasSoundcloudCrate && !hasSecondaryContent && !results.soundcloud.message && (
                   <p className="py-12 text-center text-[var(--color-muted)]">
                     No public taste signals found for this artist yet. Try another name or pick a different profile.
                   </p>
-                )}
-                  </>
                 )}
               </>
             )}
