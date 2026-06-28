@@ -253,6 +253,9 @@ function scoreTrackMatch(candidate, title, artist) {
   const wantsDerivative = /\b(remix|edit|bootleg|mashup|flip|rework|vip)\b/i.test(title);
   if (isDerivative && !wantsDerivative) score -= 0.12;
 
+  const plays = candidate.playback_count ?? candidate.playbackCount ?? 0;
+  score += Math.min(Math.log10(plays + 1) / 7, 0.08);
+
   return Math.max(0, Math.min(score, 1));
 }
 

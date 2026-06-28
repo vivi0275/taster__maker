@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { fetchYouTubeDig } from '../api';
 import { trackYouTubeDigCompleted, trackYouTubeDigStarted } from '../analytics';
 import MixCard from './MixCard';
@@ -11,6 +11,13 @@ export default function YouTubeSection({
   onPreviewPlay,
 }) {
   const [digState, setDigState] = useState({});
+
+  const summary = useMemo(() => {
+    if (!mixes?.length) return null;
+    const withTracklist = mixes.filter((m) => m.hasTracklistHint).length;
+    const totalViews = mixes.reduce((sum, m) => sum + (m.viewCount ?? 0), 0);
+    return { withTracklist, totalViews };
+  }, [mixes]);
 
   if (!mixes?.length && !message) return null;
 
@@ -54,12 +61,27 @@ export default function YouTubeSection({
             <span className="section-header-icon section-header-icon-youtube">▶</span>
             <h2 className="section-title text-lg text-white sm:text-xl">Live Sets</h2>
             {mixes?.length > 0 && (
-              <span className="badge-mono">{mixes.length} {mixes.length === 1 ? 'mix' : 'mixes'}</span>
+              <span className="badge-mono">
+                {mixes.length} {mixes.length === 1 ? 'mix' : 'mixes'}
+              </span>
             )}
           </div>
           <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-[var(--color-muted)]">
-            YouTube mixes and DJ sets. Dig the tracklist to find tracks on SoundCloud.
+            Ranked by popularity, recency, and tracklist potential. Dig a set to match tracks on
+            SoundCloud.
           </p>
+          {summary && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-[var(--color-muted)]">
+                Sorted: best match first
+              </span>
+              {summary.withTracklist > 0 && (
+                <span className="rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-1 text-xs text-emerald-300/90">
+                  {summary.withTracklist} with tracklist in description
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

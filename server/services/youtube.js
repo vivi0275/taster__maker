@@ -3,9 +3,61 @@ import { matchTracksOnSoundCloud } from './soundcloud.js';
 import { getYouTubeApiKey } from '../utils/env.js';
 
 const API_BASE = 'https://www.googleapis.com/youtube/v3';
-const MAX_MIXES = 8;
+const MAX_MIXES = 12;
 const MAX_TRACKS_PER_MIX = 25;
-const MIXES_CACHE_TTL_MS = 60 * 60 * 1000;
+const MIXES_CACHE_TTL_MS = 30 * 60 * 1000;
+
+const PREMIUM_CHANNELS = [
+  'boiler room',
+  'cercle',
+  'tomorrowland',
+  'dj mag',
+  'bbc radio 1',
+  'fabriclondon',
+  'dekmantel',
+  'time warp',
+  'awakenings',
+  'mixmag',
+  'defected',
+  'toolroom',
+  'keinemusik',
+  'hï ibiza',
+  'dc10',
+  'printworks',
+  'residency',
+  'nts live',
+  'rinse fm',
+  'hor berlin',
+];
+
+const MIX_KEYWORDS = [
+  'live set',
+  'live @',
+  'live at',
+  'b2b',
+  'essential mix',
+  'podcast',
+  'dj set',
+  'live from',
+  'live for',
+  'on the decks',
+  'in the mix',
+];
+
+const BAD_KEYWORDS = [
+  'reaction',
+  'tutorial',
+  'how to',
+  'review',
+  'interview',
+  'documentary',
+  '#shorts',
+  'shorts',
+  'teaser',
+  'trailer',
+  'announcement',
+  'unboxing',
+];
 
 const mixesCache = new Map();
 
@@ -89,10 +141,74 @@ function parseDuration(iso) {
   return total;
 }
 
+function countTimestampHints(text) {
+  if (!text) return 0;
+  return (text.match(/\d{1,2}:\d{2}(?::\d{2})?/g) ?? []).length;
+}
+
+function hasTracklistHint(description) {
+  if (!description?.trim()) return false;
+  const lower = description.toLowerCase();
+  if (/track\s*list|set\s*list|tracklist|setlist/i.test(lower)) return true;
+  return countTimestampHints(description) >= 5;
+}
+
+function buildSearchQueries(artistName) {
+  const year = new Date().getFullYear();
+  const quoted = `"${artistName}"`;
+
+  return [
+    { q: `${quoted} live set DJ mix`, order: 'viewCount', maxResults: 10 },
+    { q: `${quoted} boiler room`, order: 'relevance', maxResults: 8 },
+    {
+      q: `${quoted} live set ${year}`,
+      order: 'date',
+      maxResults: 10,
+      publishedAfter: `${year - 1}-01-01T00:00:00Z`,
+    },
+    { q: `${quoted} essential mix`, order: 'viewCount', maxResults: 6 },
+    { q: `${artistName} live set mix`, order: 'relevance', maxResults: 8, videoDuration: 'long' },
+  ];
+}
+
+async function searchVideos(params) {
+  const data = await ytFetch('/search', {
+    part: 'snippet',
+    type: 'video',
+    videoDuration: 'long',
+    ...params,
+  });
+  return data?.items ?? [];
+}
+
+async function fetchVideoDetailsBatch(videoIds) {
+  if (videoIds.length === 0) return new Map();
+
+  const chunks = [];
+  for (let i = 0; i < videoIds.length; i += 50) {
+    chunks.push(videoIds.slice(i, i + 50));
+  }
+
+  const detailsById = new Map();
+  for (const chunk of chunks) {
+    const data = await ytFetch('/videos', {
+      part: 'snippet,contentDetails,statistics',
+      id: chunk.join(','),
+    });
+    for (const video of data?.items ?? []) {
+      detailsById.set(video.id, video);
+    }
+  }
+
+  return detailsById;
+}
+
 function normalizeMix(item, details = null) {
   const id = item.id?.videoId ?? item.id;
   const snippet = details?.snippet ?? item.snippet;
   const content = details?.contentDetails;
+  const stats = details?.statistics ?? {};
+  const description = snippet?.description ?? '';
 
   return {
     videoId: id,
@@ -104,6 +220,9 @@ function normalizeMix(item, details = null) {
       null,
     publishedAt: snippet?.publishedAt ?? null,
     durationSeconds: parseDuration(content?.duration),
+    viewCount: Number(stats.viewCount ?? 0),
+    likeCount: Number(stats.likeCount ?? 0),
+    hasTracklistHint: hasTracklistHint(description),
     url: `https://www.youtube.com/watch?v=${id}`,
   };
 }
@@ -113,13 +232,43 @@ function isRelevantMix(mix, artistName) {
   const title = mix.title.toLowerCase();
   const channel = mix.channelTitle.toLowerCase();
 
+  if (BAD_KEYWORDS.some((k) => title.includes(k))) return false;
+  if (mix.durationSeconds == null) return false;
+
   if (namesMatch(title, artistName) || namesMatch(channel, artistName)) return true;
 
-  const mixKeywords = ['live', 'set', 'mix', 'boiler room', 'essential mix', 'podcast', 'dj'];
-  const hasKeyword = mixKeywords.some((k) => title.includes(k));
+  const hasKeyword = MIX_KEYWORDS.some((k) => title.includes(k));
   const mentionsArtist = title.includes(artist) || channel.includes(artist);
+  const premiumChannel = PREMIUM_CHANNELS.some((c) => channel.includes(c));
 
-  return hasKeyword && mentionsArtist;
+  return (hasKeyword && mentionsArtist) || (premiumChannel && mentionsArtist);
+}
+
+function scoreMix(mix, artistName) {
+  const title = mix.title.toLowerCase();
+  const channel = mix.channelTitle.toLowerCase();
+  const views = mix.viewCount ?? 0;
+  const ageDays = mix.publishedAt
+    ? (Date.now() - new Date(mix.publishedAt).getTime()) / 86400000
+    : 3650;
+
+  const viewScore = Math.min(Math.log10(views + 1) / 7, 1);
+  const recencyScore = Math.exp(-ageDays / 540);
+  const likeRatio = views > 0 ? Math.min((mix.likeCount ?? 0) / views, 0.05) / 0.05 : 0;
+
+  let relevanceScore = 0;
+  if (namesMatch(mix.title, artistName)) relevanceScore += 0.25;
+  if (namesMatch(mix.channelTitle, artistName)) relevanceScore += 0.2;
+  if (PREMIUM_CHANNELS.some((c) => channel.includes(c))) relevanceScore += 0.2;
+  if (MIX_KEYWORDS.some((k) => title.includes(k))) relevanceScore += 0.12;
+  if (mix.hasTracklistHint) relevanceScore += 0.18;
+
+  return (
+    viewScore * 0.38 +
+    recencyScore * 0.28 +
+    likeRatio * 0.07 +
+    Math.min(relevanceScore, 0.45) * 0.27
+  );
 }
 
 export async function searchYouTubeMixes(artistName) {
@@ -129,18 +278,25 @@ export async function searchYouTubeMixes(artistName) {
   if (cached) return cached;
 
   try {
-    const query = `${artistName} live set|DJ mix|boiler room|live`;
-    const searchData = await ytFetch('/search', {
-      part: 'snippet',
-      q: query,
-      type: 'video',
-      maxResults: MAX_MIXES,
-      order: 'relevance',
-      videoDuration: 'long',
-    });
+    const queries = buildSearchQueries(artistName);
+    const searchResults = await Promise.allSettled(
+      queries.map((query) => searchVideos(query))
+    );
 
-    const items = searchData?.items ?? [];
-    if (items.length === 0) {
+    const seenIds = new Set();
+    const searchItems = [];
+
+    for (const result of searchResults) {
+      if (result.status !== 'fulfilled') continue;
+      for (const item of result.value) {
+        const id = item.id?.videoId;
+        if (!id || seenIds.has(id)) continue;
+        seenIds.add(id);
+        searchItems.push(item);
+      }
+    }
+
+    if (searchItems.length === 0) {
       const empty = {
         status: 'success',
         mixes: [],
@@ -150,21 +306,22 @@ export async function searchYouTubeMixes(artistName) {
       return empty;
     }
 
-    const videoIds = items.map((i) => i.id?.videoId).filter(Boolean);
-    const detailsData = await ytFetch('/videos', {
-      part: 'snippet,contentDetails',
-      id: videoIds.join(','),
-    });
+    const videoIds = searchItems.map((i) => i.id?.videoId).filter(Boolean);
+    const detailsById = await fetchVideoDetailsBatch(videoIds);
 
-    const detailsById = new Map((detailsData?.items ?? []).map((v) => [v.id, v]));
-
-    const mixes = items
+    const mixes = searchItems
       .map((item) => {
         const id = item.id?.videoId;
         return normalizeMix(item, detailsById.get(id));
       })
       .filter((mix) => isRelevantMix(mix, artistName))
-      .slice(0, MAX_MIXES);
+      .map((mix) => ({ ...mix, score: scoreMix(mix, artistName) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_MIXES)
+      .map(({ score, ...mix }, index) => ({
+        ...mix,
+        rank: index + 1,
+      }));
 
     if (mixes.length === 0) {
       const empty = {
@@ -184,18 +341,17 @@ export async function searchYouTubeMixes(artistName) {
     setCachedMixes(artistName, result);
     return result;
   } catch (err) {
-    const result = {
+    return {
       status: 'error',
       mixes: [],
       message: err.message || 'Failed to fetch YouTube mixes.',
     };
-    return result;
   }
 }
 
 export async function getVideoDetails(videoId) {
   const data = await ytFetch('/videos', {
-    part: 'snippet,contentDetails',
+    part: 'snippet,contentDetails,statistics',
     id: videoId,
   });
 
@@ -208,12 +364,12 @@ export async function getVideoDetails(videoId) {
   };
 }
 
-export async function getVideoComments(videoId, maxResults = 100) {
+async function fetchCommentThreads(videoId, order, maxResults) {
   const data = await ytFetch('/commentThreads', {
     part: 'snippet',
     videoId,
     maxResults: Math.min(maxResults, 100),
-    order: 'relevance',
+    order,
     textFormat: 'plainText',
   });
 
@@ -221,6 +377,29 @@ export async function getVideoComments(videoId, maxResults = 100) {
     text: thread.snippet?.topLevelComment?.snippet?.textDisplay ?? '',
     likeCount: thread.snippet?.topLevelComment?.snippet?.likeCount ?? 0,
   }));
+}
+
+export async function getVideoComments(videoId, maxResults = 100) {
+  const perOrder = Math.min(Math.ceil(maxResults / 2), 50);
+  const [relevanceResult, timeResult] = await Promise.allSettled([
+    fetchCommentThreads(videoId, 'relevance', perOrder),
+    fetchCommentThreads(videoId, 'time', perOrder),
+  ]);
+
+  const merged = [];
+  const seen = new Set();
+
+  for (const result of [relevanceResult, timeResult]) {
+    if (result.status !== 'fulfilled') continue;
+    for (const comment of result.value) {
+      const key = comment.text.slice(0, 120);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      merged.push(comment);
+    }
+  }
+
+  return merged.slice(0, maxResults);
 }
 
 export async function digYouTubeMix(videoId) {

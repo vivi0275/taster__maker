@@ -1,4 +1,5 @@
 import MixTracklist from './MixTracklist';
+import { formatDuration, formatPublishedDate, formatViewCount } from '../utils/format';
 
 export default function MixCard({
   mix,
@@ -12,6 +13,9 @@ export default function MixCard({
   onPreviewPlay,
 }) {
   const embedUrl = `https://www.youtube.com/embed/${mix.videoId}?rel=0`;
+  const viewsLabel = formatViewCount(mix.viewCount);
+  const dateLabel = formatPublishedDate(mix.publishedAt);
+  const durationLabel = formatDuration(mix.durationSeconds);
 
   const handleOutboundClick = () => {
     onOutboundClick?.({
@@ -28,12 +32,33 @@ export default function MixCard({
     >
       <div className="border-b border-[var(--color-border-subtle)] p-4">
         <div className="mb-2 flex items-start justify-between gap-3">
-          <h3 className="text-sm font-medium leading-snug text-white">{mix.title}</h3>
-          <span className="badge-mono border-[var(--color-youtube)]/30 bg-[var(--color-youtube)]/10 text-[var(--color-youtube)]">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+              {mix.rank != null && (
+                <span className="badge-mono border-white/15 bg-white/5 text-white/80">
+                  #{mix.rank}
+                </span>
+              )}
+              {mix.hasTracklistHint && (
+                <span className="badge-mono border-emerald-400/30 bg-emerald-400/10 text-emerald-300">
+                  Tracklist likely
+                </span>
+              )}
+            </div>
+            <h3 className="text-sm font-medium leading-snug text-white">{mix.title}</h3>
+          </div>
+          <span className="badge-mono shrink-0 border-[var(--color-youtube)]/30 bg-[var(--color-youtube)]/10 text-[var(--color-youtube)]">
             YouTube
           </span>
         </div>
+
         <p className="text-xs text-[var(--color-muted)]">{mix.channelTitle}</p>
+
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--color-muted)]">
+          {viewsLabel && <span>{viewsLabel}</span>}
+          {dateLabel && <span>{dateLabel}</span>}
+          {durationLabel && <span>{durationLabel}</span>}
+        </div>
       </div>
 
       <div className="aspect-video bg-black/30">

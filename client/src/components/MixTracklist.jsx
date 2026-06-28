@@ -35,23 +35,36 @@ export default function MixTracklist({
   const sourceLabel =
     digData.tracklistSource === 'comment' ? 'From comment' : 'From description';
 
-  const sortedTracks = [...digData.tracks].sort((a, b) => {
+  const foundTracks = digData.tracks.filter(
+    (t) => t.matchStatus !== 'not_found' && t.url
+  );
+
+  const sortedTracks = [...foundTracks].sort((a, b) => {
     const orderA = MATCH_ORDER[a.matchStatus] ?? 2;
     const orderB = MATCH_ORDER[b.matchStatus] ?? 2;
     return orderA - orderB;
   });
 
+  if (sortedTracks.length === 0) {
+    return (
+      <p className="rounded-xl border border-[var(--color-border)] bg-white/5 px-4 py-3 text-sm text-[var(--color-muted)]">
+        No tracks from this mix were found on SoundCloud.
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted)]">
-        <span className="uppercase tracking-widest">{sortedTracks.length} tracks</span>
+        <span className="uppercase tracking-widest">
+          {sortedTracks.length} {sortedTracks.length === 1 ? 'track' : 'tracks'} on SoundCloud
+        </span>
         <span className="rounded-full border border-white/10 px-2 py-0.5">{sourceLabel}</span>
       </div>
 
       <ul className="max-h-96 space-y-2 overflow-y-auto pr-1">
         {sortedTracks.map((track, i) => {
-          const found = track.matchStatus !== 'not_found' && track.url;
-          const matchStyle = MATCH_STYLES[track.matchStatus] ?? MATCH_STYLES.not_found;
+          const matchStyle = MATCH_STYLES[track.matchStatus] ?? MATCH_STYLES.probable;
 
           return (
             <li
@@ -74,17 +87,13 @@ export default function MixTracklist({
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className={`badge-mono ${matchStyle}`}>
-                    {track.matchStatus === 'matched'
-                      ? 'Found'
-                      : track.matchStatus === 'probable'
-                        ? 'Probable'
-                        : 'Not on SC'}
+                    {track.matchStatus === 'matched' ? 'Found' : 'Probable'}
                   </span>
                   {track.signal && <SignalBadge signal={track.signal} />}
                 </div>
               </div>
 
-              {found && track.previewable && track.soundcloudTrackId && (
+              {track.previewable && track.soundcloudTrackId && (
                 <SoundCloudPreview
                   trackId={track.soundcloudTrackId}
                   maxDuration={track.previewMaxDuration ?? 30}
@@ -98,29 +107,27 @@ export default function MixTracklist({
                 />
               )}
 
-              {found && (
-                <a
-                  href={track.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => {
-                    trackYouTubeScMatchClick({
-                      videoId: digData.videoId,
-                      artist: artistName,
-                      trackId: track.soundcloudTrackId,
-                      destination: track.url,
-                    });
-                    onOutboundClick?.({
-                      platform: 'SoundCloud',
-                      signal: 'from_mix',
-                      destination: track.url,
-                    });
-                  }}
-                  className="btn-ghost mt-2 w-full py-2 text-[var(--color-accent)]"
-                >
-                  Open on SoundCloud
-                </a>
-              )}
+              <a
+                href={track.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  trackYouTubeScMatchClick({
+                    videoId: digData.videoId,
+                    artist: artistName,
+                    trackId: track.soundcloudTrackId,
+                    destination: track.url,
+                  });
+                  onOutboundClick?.({
+                    platform: 'SoundCloud',
+                    signal: 'from_mix',
+                    destination: track.url,
+                  });
+                }}
+                className="btn-ghost mt-2 w-full py-2 text-[var(--color-accent)]"
+              >
+                Open on SoundCloud
+              </a>
             </li>
           );
         })}
